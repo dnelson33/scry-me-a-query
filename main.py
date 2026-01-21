@@ -40,17 +40,26 @@ def _format_response(data, site_url=''):
         response_message = f"No data found for query {site_url}"
         files = None
     else:
-        response_message = f"Scryfall results: {site_url}\n"
+        card_count = data.get('total_cards')
+        response_message = f"Scryfall found {card_count} cards: {site_url}\n"
+        
+        if card_count > 160:
+            response_message += "Displaying first 160 results..."
+            
         cards = data['data']
-        image_uris = []
-        for card in cards:  # Limit to first 5 results
-            image_uri = card.get('image_uris', {}).get('small', None)
-            image_uris.append(image_uri)
+        images = []
+        for card in cards[:160]:  # Limit to first 160 results
+            if card.get('card_faces', [{}])[0].get('image_uris'):
+                image_uris = card['card_faces'][0].get('image_uris', {})
+            else:
+                image_uris = card.get('image_uris', {})
+            image_uri = image_uris.get('small', "")
+            images.append(image_uri)
         
         i = 0
         files = []
-        while i < len(image_uris):
-            batch = image_uris[i:i+16]
+        while i < len(images):
+            batch = images[i:i+16]
             grid_image = generate_grid(batch)
             file = discord.File(grid_image, filename='grid.png')
             files.append(file)

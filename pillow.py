@@ -14,9 +14,7 @@ def generate_grid(images)->BytesIO:
         grid_width = 4  # 4x4 grid
     
     grid_height = math.ceil(len(images) / grid_width)
-    
-    print((grid_width, grid_height))
-    
+        
     # Create a new blank image for the grid
     image_size = (146, 204)  # Size of each image in the grid
     grid_image = Image.new('RGB', (grid_width * image_size[0], grid_height * image_size[1]))
@@ -28,7 +26,7 @@ def generate_grid(images)->BytesIO:
             img = img.resize(image_size)  # Resize image to fit in the grid
             x = (index % grid_width) * image_size[0]
             y = (index // grid_width) * image_size[1]
-            print(x,y)
+    
             grid_image.paste(img, (x, y))
         except Exception as e:
             print(f"Error loading image {image_path}: {e}")
