@@ -25,39 +25,38 @@ async def squery(ctx, *, query: str):
         data = None
         try:
             (data, site_url) = scryfall_query(query)
+            (message, files) = _format_response(data, site_url)
+            await ctx.send(message, files=files) 
         except Exception as e:
             print(f"Error querying Scryfall: {e}")
+            await ctx.send("An error occurred while querying Scryfall.")
             
-        (message, _, files) = _format_response(data, site_url)
+            
         
-        await ctx.send(message, files=files) 
 
 def _format_response(data, site_url=''):
     response_message = ""
     if not data or 'data' not in data:
-        response_message = "No data found."
+        response_message = f"No data found for query {site_url}"
+        files = None
+    else:
+        response_message = f"Scryfall results: {site_url}\n"
+        cards = data['data']
+        image_uris = []
+        for card in cards:  # Limit to first 5 results
+            image_uri = card.get('image_uris', {}).get('small', None)
+            image_uris.append(image_uri)
+        
+        i = 0
+        files = []
+        while i < len(image_uris):
+            batch = image_uris[i:i+16]
+            grid_image = generate_grid(batch)
+            file = discord.File(grid_image, filename='grid.png')
+            files.append(file)
+            i+=16
     
-    response_message = f"Scryfall results: {site_url}\n"
-    cards = data['data']
-    image_uris = []
-    for card in cards:  # Limit to first 5 results
-        image_uri = card.get('image_uris', {}).get('small', None)
-        image_uris.append(image_uri)
-    
-    i = 0
-    embeds = []
-    files = []
-    while i < len(image_uris):
-        batch = image_uris[i:i+16]
-        grid_image = generate_grid(batch)
-        file = discord.File(grid_image, filename='grid.png')
-        # embed = discord.Embed()
-        # embed.set_image(url="attachment://grid.png")
-        # embeds.append(embed)
-        files.append(file)
-        i+=16
-    
-    return (response_message, embeds, files)
+    return (response_message, files)
 
 bot.run(token, log_handler=handler, log_level=logging.DEBUG)
 
