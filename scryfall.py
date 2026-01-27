@@ -9,6 +9,9 @@ def scryfall_query(search_text) -> tuple[dict, str]:
     else:
         order = 'edhrec'
     
+    if not any(x in search_text for x in ['legal:', 'format:', 'f:']):
+        search_text += ' f:edh'
+    
     query_params = f'q={search_text}&order={order}'
     url = f'{BASE_URL}?{query_params}'
     
@@ -18,7 +21,7 @@ def scryfall_query(search_text) -> tuple[dict, str]:
     if response.status_code != 200:
         if response.status_code == 404:
             return (None, site_url)
-        raise Exception(f'Error fetching data from Scryfall API: {response.status_code}')
+        raise Exception(f'Error fetching data from Scryfall API\nStatus: {response.status_code}\nURL: {url}')
     data = response.json()
     
     return (data, site_url)
