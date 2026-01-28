@@ -25,7 +25,13 @@ async def get_random_card(ctx, query):
     try:
         (data, site_url) = scryfall_query(query)
         print('total cards:', data.get('total_cards', 0))
-        rnd = random.randint(0, data.get('total_cards', 1) - 1)
+        has_next_page = data.get('next_page') is not None
+
+        if(has_next_page):
+            random_page = random.randint(0, (data['total_cards']) // 175) + 1
+            (data, site_url) = scryfall_query(f"{query} page:{random_page}")
+
+        rnd = random.randint(0, 175 if has_next_page else data.get('total_cards', 1) - 1)
         data['data'] = [data['data'][rnd]]  # Keep only one random sliver
         data['total_cards'] = 1
         (_, files) = _format_response(data, site_url)
@@ -60,8 +66,8 @@ async def sq(ctx, *, query: str):
 
 @bot.command()
 async def mycaptain(ctx):
-    creature_type = get_random_creature_type()
-    query = f"is:commander t:{creature_type}"
+    color_identity = get_random_color_identity()
+    query = f"is:commander ci={color_identity}"
     async with ctx.typing():
         await get_random_card(ctx, query)
 
