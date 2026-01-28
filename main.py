@@ -15,24 +15,39 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
-    
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name} - {bot.user.id}')
     
 @bot.command()
 async def sq(ctx, *, query: str):
+    global last_sq
+    reply_query = await _get_reply_query(ctx)
+    if reply_query is not None:
+        query = f"{reply_query} {query}"
+    
     async with ctx.typing():
         data = None
+        last_sq = query
         try:
             (data, site_url) = scryfall_query(query)
             (message, files) = _format_response(data, site_url)
-            await ctx.send(message, files=files) 
+            # reply to the original message being replied to (if any), otherwise reply to the command message
+            
+            await ctx.send(message, files=files, reference=ctx.message, mention_author=False)
         except Exception as e:
             print(f"Error querying Scryfall: {e}")
-            await ctx.send("An error occurred while querying Scryfall.")
+            await ctx.send("An error occurred while querying Scryfall.", reference=ctx.message, mention_author=False)
             
-            
+@bot.command()
+async def sqadd(ctx, *, query:str):
+    if not last_sq is None:           
+        new_query = f"{last_sq} {query}"
+    else:
+        new_query = query
+    await sq(ctx, query=new_query)
+       
+    
 @bot.command()
 async def sliverme(ctx):
     async with ctx.typing():
@@ -51,8 +66,28 @@ async def sliverme(ctx):
 
 @bot.command()
 async def BOO(ctx):
-    await ctx.send("https://tenor.com/view/hamster-ayasan-gif-24417561"
-                   )
+    await ctx.send("https://tenor.com/view/hamster-ayasan-gif-24417561")
+
+async def _get_reply_query(ctx):
+    if ctx.message.reference is None:
+        return None
+    message = await ctx.channel.fetch_message(ctx.message.reference.message_id) 
+    query = ""
+    try:
+        while message is not None:
+            print(message.content)
+            if message.content.startswith('!sq '):
+                query += message.content[4:] + " "
+            if message.reference is None:
+                break
+            message = await ctx.channel.fetch_message(message.reference.message_id)
+            
+        print(query)
+        return query.strip()
+    
+    except Exception as e:
+        print(f"Error fetching replied message: {e}")
+        
 def _format_response(data, site_url=''):
     card_limit = 64
     response_message = ""
