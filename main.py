@@ -1,3 +1,4 @@
+from importlib.resources import files
 import discord
 from discord.ext import commands
 import logging
@@ -5,6 +6,7 @@ from dotenv import load_dotenv
 import os
 from scryfall import scryfall_query
 from pillow import generate_grid
+from get_random import get_random_color_identity, get_random_creature_type
 import random 
 
 load_dotenv()
@@ -15,6 +17,23 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+async def get_random_card(ctx, query):
+    data = None
+    print(query)
+
+    try:
+        (data, site_url) = scryfall_query(query)
+        print('total cards:', data.get('total_cards', 0))
+        rnd = random.randint(0, data.get('total_cards', 1) - 1)
+        data['data'] = [data['data'][rnd]]  # Keep only one random sliver
+        data['total_cards'] = 1
+        (_, files) = _format_response(data, site_url)
+        await ctx.send(files=files) 
+    except Exception as e:
+        print(f"Error querying Scryfall: {e}")
+        await ctx.send(f"Woah there are no cards that match `{query}`!")  
+    
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name} - {bot.user.id}')
@@ -38,6 +57,19 @@ async def sq(ctx, *, query: str):
         except Exception as e:
             print(f"Error querying Scryfall: {e}")
             await ctx.send("An error occurred while querying Scryfall.", reference=ctx.message, mention_author=False)
+
+@bot.command()
+async def mycaptain(ctx):
+    creature_type = get_random_creature_type()
+    query = f"is:commander t:{creature_type}"
+    async with ctx.typing():
+        await get_random_card(ctx, query)
+
+@bot.command()
+async def sqrandom(ctx, *, query: str):
+    async with ctx.typing():
+        await get_random_card(ctx, query)
+            
             
 @bot.command()
 async def sqadd(ctx, *, query:str):
@@ -51,18 +83,7 @@ async def sqadd(ctx, *, query:str):
 @bot.command()
 async def sliverme(ctx):
     async with ctx.typing():
-        data = None
-        query = "t:sliver"
-        try:
-            (data, site_url) = scryfall_query(query)
-            rnd = random.randint(0, data.get('total_cards', 1) - 1)
-            data['data'] = [data['data'][rnd]]  # Keep only one random sliver
-            data['total_cards'] = 1
-            (_, files) = _format_response(data, site_url)
-            await ctx.send(files=files) 
-        except Exception as e:
-            print(f"Error querying Scryfall: {e}")
-            await ctx.send("An error occurred while querying Scryfall.")   
+        await get_random_card(ctx, "t:sliver")
 
 @bot.command()
 async def BOO(ctx):
