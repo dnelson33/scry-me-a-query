@@ -11,7 +11,9 @@ def scryfall_query(search_text) -> tuple[dict, str]:
     
     if not any(x in search_text for x in ['legal:', 'format:', 'f:']):
         search_text += ' f:edh'
-    
+    if 'f:any' in search_text:
+        search_text = search_text.replace('f:any', '')
+        
     query_params = f'q={search_text}&order={order}'
     url = f'{BASE_URL}?{query_params}'
     
