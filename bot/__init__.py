@@ -1,0 +1,1 @@
+from bot.scryquery_bot import bot
