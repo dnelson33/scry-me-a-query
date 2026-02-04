@@ -2,7 +2,8 @@ from scryfall.api.types import ScryfallCardSearchRequest, ScryfallCardSearchResp
 from typing import cast
 import requests
 
-BASE_URL='https://api.scryfall.com/'
+BASE_URL='https://api.scryfall.com'
+SCRYFALL_URL='https://scryfall.com/search'
 
 def card_search_request(request: ScryfallCardSearchRequest) -> ScryfallCardSearchResponse:
     endpoint = 'cards/search'
@@ -16,7 +17,7 @@ def card_search_request(request: ScryfallCardSearchRequest) -> ScryfallCardSearc
         
         raise Exception(f'Error fetching data from Scryfall API\nStatus: {response.status_code}\nURL: {url}')
     data = response.json()
-    data['url'] = response.request.url
+    data['url'] = response.request.url.replace(f'{BASE_URL}/{endpoint}', SCRYFALL_URL)
     return cast(ScryfallCardSearchResponse, data)
 
 
