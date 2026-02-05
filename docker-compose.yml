@@ -1,0 +1,9 @@
+services:
+  scryquery_bot:
+    build: .
+    container_name: scryquery_bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+    volumes:
+      - ./:/app

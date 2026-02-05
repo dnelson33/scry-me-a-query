@@ -1,10 +1,11 @@
 from scryfall.service import ScryQueryCard
-from image_utils.card_grid import generate_grid
+from image_utils import generate_grid
 from bot.types import ScryQueryBotResponse
 import bot.emojis as emojis
 from typing import List
 import discord
 import re 
+from random import randint
 
 RESPONSE_LIMIT = 64
 GRID_BATCH_SIZE = 16
@@ -60,25 +61,31 @@ async def get_reply_query(ctx, command_prefix: str) -> str:
         raise e
 
 def get_formatted_card_info(card: ScryQueryCard) -> str:
-    price = card.get('price', 'N/A')
-    price_foil = card.get('price_foil', 'N/A')
-    
+    price = f'${float(card["price"]):.2f}' if card.get('price') else 'N/A'
+    price_foil = f'${float(card["price_foil"]):.2f}' if card.get('price_foil') else 'N/A'
+    card_emoji = _get_emoji('card')
+    card_foil_emoji = _get_emoji('cardfoil')
     name_with_link = f"**[{card['name']}](<{card['scryfall_url']}>)**"
     type_and_cost = replace_emojis(f'*{card['type_line']} {card["mana_cost"]}*')
     description = replace_emojis(card['oracle_text'])
-    price_info = f"Price: :white_large_square: ${price}\t:rainbow_flag: ${price_foil}"
+    price_info = f"Price: {card_emoji} {price}\t{card_foil_emoji} {price_foil}"
     
     return f">>> {name_with_link}\n{type_and_cost}\n{description}\n\n{price_info}"
 
 def replace_emojis(text: str) -> str:
     return re.sub(r'\{(.*?)\}', _replace_emoji_match, text)
+    
+def _get_emoji(name:str)->str:
+    emoji_id = [e for e in emojis.EMOJIS if e.name == name]
+    if not emoji_id:
+        return ''
+    emoji_id = emoji_id[0].id
+    return f'<:{name}:{emoji_id}>'
 
 def _replace_emoji_match(match):
     symbol = match.group(1).lower()
     emoji_name = f'mana{symbol}'
-    emoji_id = [e for e in emojis.EMOJIS if e.name == emoji_name]
-    if not emoji_id:
-        return match.group(0)
-    emoji_id = emoji_id[0].id
-    return f'<:{emoji_name}:{emoji_id}>'
+    
+    return _get_emoji(emoji_name)
+
 

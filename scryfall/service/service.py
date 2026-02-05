@@ -1,8 +1,9 @@
-from scryfall.api import card_search_request, random_card_request
+from scryfall.api import card_search_request, random_card_request, card_rulings_request
 from scryfall.api.types import ScryfallCardSearchRequest, ScryfallCardSearchResponse, ScryfallCard, ScryfallOrder
-from scryfall.service.types import CardSearchResponse, PageInfo, ScryQueryCard
+from scryfall.service.types import CardSearchResponse, PageInfo, ScryQueryCard, CardRulingsResponse, RandomCardRulingResponse
 import re
 from typing import List
+from random import randint
 
 def card_search(search_text:str, page:int=None) -> CardSearchResponse:
     q = search_text
@@ -41,6 +42,35 @@ def random_card(search_text:str) -> ScryQueryCard:
     })
     return _map_card(api_response)
     
+def get_rulings(card: ScryQueryCard)->CardRulingsResponse:
+    rulings_url = card['rulings_url']
+    
+    if not rulings_url:
+        rulings = []
+    else:
+        api_response = card_rulings_request(card['rulings_url'])
+        rulings = [{ 'ruling_text': r.get('comment'), 'published_at': r.get('published_at'), 'source': r.get('source') } for r in api_response.get('data', [])]
+    
+    return {
+        'card': card,
+        'rulings': rulings
+    }
+    
+def get_random_card_ruling(search_text: str)->RandomCardRulingResponse:
+    card = random_card(search_text)
+    rulings_response = get_rulings(card)
+    rulings = rulings_response.get('rulings', [])
+    rulings_count = len(rulings)
+    if rulings_response and rulings_count > 0:
+        rnd = randint(0, rulings_count - 1)
+        return {
+            'card': card,
+            'ruling': rulings[rnd]
+        }
+    return {
+        'card': card,
+        'ruling': None
+    }
     
 def _get_pages(api_response: ScryfallCardSearchResponse) -> List[PageInfo]:
     if not api_response.get('next_page'):
@@ -76,5 +106,8 @@ def _map_card(scryfall_card: ScryfallCard) -> ScryQueryCard:
         'type_line': scryfall_card.get('type_line'),
         'oracle_text': scryfall_card.get('oracle_text'),
         'price': float(price) if price else None,
-        'price_foil': float(prices.get("usd_foil")) if prices.get("usd_foil") else None
+        'price_foil': float(prices.get("usd_foil")) if prices.get("usd_foil") else None,
+        'flavor_text': scryfall_card.get('flavor_text'),
+        'rulings_url': scryfall_card.get('rulings_uri'),
+        'cmc': scryfall_card.get('cmc', 0)
     }

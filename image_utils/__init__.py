@@ -1,1 +1,1 @@
-from .card_grid import generate_grid
+from image_utils.cards import generate_grid, get_card_image

@@ -114,3 +114,13 @@ class ScryfallRandomCardRequest(TypedDict):
     face: Optional[str]
     version: Optional[str]
     pretty: Optional[bool]
+    
+class ScryfallRuling(TypedDict):
+    oracle_id: str
+    source: str
+    published_at: str
+    comment: str
+    
+class ScryfallRulingsResponse(TypedDict):
+    has_more: bool
+    data: List[ScryfallRuling]

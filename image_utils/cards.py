@@ -23,8 +23,8 @@ def generate_grid(card_images:List[str])->BytesIO:
 
     for index, image_path in enumerate(card_images):
         try:
-            img_response = requests.get(image_path, stream=True)
-            img = Image.open(BytesIO(img_response.content))
+            img_bytes = get_card_image(image_path)
+            img = Image.open(img_bytes)
             img = img.resize(image_size)  # Resize image to fit in the grid
             x = (index % grid_width) * image_size[0]
             y = (index // grid_width) * image_size[1]
@@ -40,6 +40,10 @@ def generate_grid(card_images:List[str])->BytesIO:
     
     return grid_bytes
 
+def get_card_image(url:str)->BytesIO:
+    img_response = requests.get(url, stream=True)
+    return BytesIO(img_response.content)
+    
 def _calculate_grid_size(image_count:int)->Tuple[int, int]:
     if image_count < 3:
         grid_width = image_count # 1x1 or 1x2 grid
