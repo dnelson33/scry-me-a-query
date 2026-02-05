@@ -123,7 +123,7 @@ async def clash(ctx):
     async with ctx.typing():
         contestants = [ m.mention for m in ctx.message.mentions]
         contestants.append(ctx.author.mention)
-        
+        contestants = set(contestants)
         if len(contestants) == 1:
             initial_message = 'You need friends to play ThoughtClash, nerd!'
         elif len(contestants) > 16:
