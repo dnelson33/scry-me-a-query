@@ -14,7 +14,7 @@ def generate_grid(card_images:List[str])->BytesIO:
         print("Warning: More than 16 images provided, only the first 16 will be used.")
         card_images = card_images[:16]  # Limit to 16 images for a 4x4 grid
 
-    (grid_height, grid_width) = _calculate_grid_size(image_count)
+    (grid_width, grid_height) = _calculate_grid_size(image_count)
    
     # Create a new blank image for the grid
     

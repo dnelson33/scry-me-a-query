@@ -3,13 +3,18 @@ import discord
 from discord.ext import commands
 from scryfall.service import card_search, ScryQueryCard, random_card
 from bot.utils import format_response, get_reply_query
-
+import bot.emojis as emojis
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
    
 @bot.event
 async def on_ready():
+    GUILD_ID = 1462905855686082653 # Guild ID where emojis are hosted
+    guild = bot.get_guild(GUILD_ID)
+
+    emojis.EMOJIS = guild.emojis
+    
     print(f'Logged in as {bot.user.name} - {bot.user.id}')
 
 @bot.command()
@@ -48,7 +53,7 @@ async def sliverme(ctx):
 async def BOO(ctx):
     await ctx.send("https://tenor.com/view/hamster-ayasan-gif-24417561")
 
-        
+
 
 
 

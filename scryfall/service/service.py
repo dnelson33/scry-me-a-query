@@ -9,9 +9,10 @@ def card_search(search_text:str, page:int=None) -> CardSearchResponse:
     order = ScryfallOrder.EDHREC.value
     
     # Get order from search_text and remove it from q
-    if 'order:' in search_text:
-        order = search_text.split('order:')[1].split()[0]
-        q = re.sub(r'order:\S\w*', '', q).strip()
+    m = re.search(r'(?<!\w)order:(\S+)', search_text)
+    if m:
+        order = m.group(1)
+        q = re.sub(r'(?<!\w)order:\S+', '', q).strip()
     
     # Get format from search_text and remove it from q if it is 'any'
     if not any(x in q for x in ['legal:', 'format:', 'f:']):
@@ -64,7 +65,16 @@ def _map_card(scryfall_card: ScryfallCard) -> ScryQueryCard:
     if not image_uri and scryfall_card.get('card_faces'):
         image_uri = scryfall_card['card_faces'][0].get('image_uris', {}).get('png', '')
     
+    prices = scryfall_card.get('prices', {})
+    price = prices.get("usd", prices.get("usd_foil", None))
+    
     return {
         'scryfall_url': scryfall_card['scryfall_uri'],
-        'image_uri': image_uri
+        'image_uri': image_uri,
+        'name': scryfall_card['name'],
+        'mana_cost': scryfall_card.get('mana_cost'),
+        'type_line': scryfall_card.get('type_line'),
+        'oracle_text': scryfall_card.get('oracle_text'),
+        'price': float(price) if price else None,
+        'price_foil': float(prices.get("usd_foil")) if prices.get("usd_foil") else None
     }
