@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 from scryfall.service import card_search, ScryQueryCard, random_card, get_random_card_ruling
@@ -35,8 +36,8 @@ async def sq(ctx, *, query: str):
     async with ctx.typing():
         last_sq = query
         try:
-            card_response = card_search(query)
-            bot_response = format_response(card_response["cards"], card_response["scryfall_url"])
+            card_response = await asyncio.to_thread(card_search, query)
+            bot_response = await asyncio.to_thread(format_response, card_response["cards"], card_response["scryfall_url"])
                     
             await ctx.send(content=bot_response['response_message'], embed=bot_response['embed'], files=bot_response["files"], reference=ctx.message, mention_author=False)
         except Exception as e:
@@ -50,8 +51,8 @@ async def mycaptain(ctx):
 @bot.command()
 async def sqrandom(ctx, *, query: str = ''):
     async with ctx.typing():
-        card = random_card(query)
-        bot_response = format_response([card], card['scryfall_url'])
+        card = await asyncio.to_thread(random_card, query)
+        bot_response = await asyncio.to_thread(format_response, [card], card['scryfall_url'])
         await ctx.send(bot_response["response_message"], embed=bot_response['embed'], files=bot_response["files"], reference=ctx.message, mention_author=False)       
             
 @bot.command(aliases=["slivermetimbers"])
@@ -65,7 +66,7 @@ async def BOO(ctx):
 @bot.command(aliases=["quoteme"])
 async def flavortown(ctx):
     async with ctx.typing():
-        card = random_card("has:flavor")
+        card = await asyncio.to_thread(random_card, "has:flavor")
         flavor_text = card.get('flavor_text')
         card_name_with_link = get_card_name_with_link(card)
         bot_message=f"{flavor_text}\n\n— {card_name_with_link}"
@@ -76,7 +77,7 @@ async def flavortown(ctx):
 @bot.command()
 async def edhrec(ctx, *, query: str):
     async with ctx.typing():
-        commander_stats = get_edhrec_stats(query)
+        commander_stats = await asyncio.to_thread(get_edhrec_stats, query)
         if commander_stats:
             rank = commander_stats.get('rank')
             commander_decks = commander_stats.get('commander_deck_count')
@@ -119,23 +120,19 @@ async def arcaneoculus(ctx):
 async def asktheoracle(ctx, *, query:str = ''):
     async with ctx.typing():
         try:
-            ruling_response = get_random_card_ruling(query)
+            ruling_response = await asyncio.to_thread(get_random_card_ruling, query)
         except Exception as e:
             print(e)
             ruling_response = None
             
         if ruling_response and ruling_response.get('ruling'):
             card = ruling_response['card']
-            bot_response = format_response([ruling_response["card"]])
             name_with_link = f"**[{card['name']}](<{card['scryfall_url']}>)**"
             ruling = ruling_response['ruling'].get('ruling_text')
             embed = discord.Embed(title="The Oracle has spoken", description=f'{name_with_link}\n{ruling}', color=discord.Color.blue())
-            if len(bot_response['files'])>=1:
-                file = bot_response['files'][0]
-                embed.set_image(url=file.uri)
-            else:
-                file = None
-            await ctx.send(embed=embed, file=file, reference=ctx.message, mention_author=False)
+            if card.get('image_uri'):
+                embed.set_image(url=card['image_uri'])
+            await ctx.send(embed=embed, reference=ctx.message, mention_author=False)
         else:
             oracle_img_path = 'assets/oracle_pondering_orb.jpg'
             oracle = discord.File(oracle_img_path)
@@ -169,7 +166,7 @@ async def clash(ctx):
         entry_message = ''
         for contestant in contestants:
             cmc_filter = ' '.join([ f'mv!={int(c)}' for c in cmcs])
-            card = random_card(f'{cmc_filter}')
+            card = await asyncio.to_thread(random_card, f'{cmc_filter}')
             cmcs.append(card.get('cmc', 0))
             entries.append({ 'user': contestant, 'card_name': card['name'], 'card_image_url': card['image_uri'], 'cmc': card.get('cmc', 0) })
             name_with_link = f"**[{card['name']}](<{card['scryfall_url']}>)**"
@@ -178,7 +175,7 @@ async def clash(ctx):
         
         highest_cmc = max([e['cmc'] for e in entries])
         winning_entry = [e for e in entries if e['cmc'] == highest_cmc][0]
-        card_image = generate_grid([e['card_image_url'] for e in entries])
+        card_image = await asyncio.to_thread(generate_grid, [e['card_image_url'] for e in entries])
         message = replace_emojis(f'>>> {entry_message}\n\nCongrats {winning_entry['user']}!!')
         
         embed = discord.Embed(title="ThoughtClash Results", description=message, color=discord.Color.magenta())
@@ -217,6 +214,6 @@ async def cards(ctx):
             return
         
         query = f'{card_name} f:any' if card_name else previous_query
-        card_response = card_search(query, unique=scryfall_unique)
-        response = format_response(card_response['cards'], card_response['scryfall_url'])
-        await ctx.send(response["response_message"], files=response["files"], reference=ctx.message, mention_author=False)        
+        card_response = await asyncio.to_thread(card_search, query, unique=scryfall_unique)
+        response = await asyncio.to_thread(format_response, card_response['cards'], card_response['scryfall_url'])
+        await ctx.send(response["response_message"], embed=response["embed"], files=response["files"], reference=ctx.message, mention_author=False)        

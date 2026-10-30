@@ -2,26 +2,39 @@ from scryfall.api import card_search_request, random_card_request, card_rulings_
 from scryfall.api.types import ScryfallCardSearchRequest, ScryfallCardSearchResponse, ScryfallCard, ScryfallOrder, ScryfallUnique
 from scryfall.service.types import CardSearchResponse, PageInfo, ScryQueryCard, CardRulingsResponse, RandomCardRulingResponse
 import re
-from typing import List
+from typing import List, Tuple
 from random import randint
-import urllib.parse
+
+ORDER_PATTERN = re.compile(r'(?<!\w)order:(\S+)', re.IGNORECASE)
+FORMAT_PATTERN = re.compile(r'(?<!\w)(?:f|format|legal):\S+', re.IGNORECASE)
+VALID_ORDERS = {order.value for order in ScryfallOrder}
+
+def _prepare_query(search_text: str) -> Tuple[str, str]:
+    """Split Scryfall modifiers out of a user query before it is encoded.
+
+    Modifiers must be parsed from the raw text: once the query is URL-encoded,
+    tokens like ``order:cmc`` become ``order%3Acmc`` and no longer match.
+    """
+    q = (search_text or '').strip()
+    order = ScryfallOrder.EDHREC.value
+
+    match = ORDER_PATTERN.search(q)
+    if match:
+        candidate = match.group(1).lower()
+        if candidate in VALID_ORDERS:
+            order = candidate
+        q = (q[:match.start()] + q[match.end():]).strip()
+
+    # Respect any explicit format/legality filter, including f:any. Otherwise
+    # default searches to Commander-legal cards.
+    if not FORMAT_PATTERN.search(q):
+        q = f'{q} f:edh'.strip()
+
+    return re.sub(r'\s+', ' ', q).strip(), order
 
 def card_search(search_text:str, page:int=None, unique:ScryfallUnique=None) -> CardSearchResponse:
-    q = urllib.parse.quote(search_text) if search_text else ''
-    order = ScryfallOrder.EDHREC.value
-    
-    # Get order from search_text and remove it from q
-    m = re.search(r'(?<!\w)order:(\S+)', search_text)
-    if m:
-        order = m.group(1)
-        q = re.sub(r'(?<!\w)order:\S+', '', q).strip()
-    
-    # Get format from search_text and remove it from q if it is 'any'
-    if not any(x in q for x in ['legal:', 'format:', 'f:']):
-        q += ' f:edh'
-    if 'f:any' in search_text:
-        q = q.replace('f:any', '')
-          
+    q, order = _prepare_query(search_text)
+
     request: ScryfallCardSearchRequest = {
         'q': q,
         'order': order,
@@ -39,9 +52,8 @@ def card_search(search_text:str, page:int=None, unique:ScryfallUnique=None) -> C
     return card_search_response
 
 def random_card(search_text:str) -> ScryQueryCard:
-    q = urllib.parse.quote(search_text) if search_text else ''
     api_response = random_card_request({
-        'q': q
+        'q': search_text or ''
     })
     return _map_card(api_response)
     
@@ -97,12 +109,12 @@ def _map_card(scryfall_card: ScryfallCard) -> ScryQueryCard:
     if scryfall_card.get('card_faces'):
         front = scryfall_card['card_faces'][0]
         back = scryfall_card['card_faces'][1] if len(scryfall_card['card_faces']) > 1 else front
-        image_uri = front.get('image_uris', {}).get('png') or scryfall_card.get('image_uris', {}).get('png', '')
+        image_uri = front.get('image_uris', {}).get('normal') or scryfall_card.get('image_uris', {}).get('normal', '')
         oracle_text = f'{front['oracle_text']}\n // \n{back['oracle_text']}'
         type_line = f'{front['type_line']} // {back['type_line']}' if back.get('type_line') else front.get('type_line')
         mana_cost = f'{front.get('mana_cost')} // {back.get('mana_cost')}' if back.get('mana_cost') else front.get('mana_cost')
     else:
-        image_uri = scryfall_card.get('image_uris', {}).get('png')
+        image_uri = scryfall_card.get('image_uris', {}).get('normal')
         oracle_text = scryfall_card.get('oracle_text')
         mana_cost = scryfall_card.get('mana_cost')
         type_line = scryfall_card.get('type_line')

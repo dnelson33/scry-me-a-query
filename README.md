@@ -36,3 +36,6 @@ This bot provides additional Scryfall functionality to discord like returning mu
 - Emojis loaded from a configured guild on startup are used by some responses.
 - Many commands use Scryfall and EDHRec services; network access is required.
 
+## Development
+- See [`IMPROVEMENTS.md`](IMPROVEMENTS.md) for known issues, the improvement backlog, and manual verification commands.
+

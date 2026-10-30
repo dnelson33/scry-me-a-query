@@ -12,35 +12,34 @@ GRID_BATCH_SIZE = 16
 
 def format_response(cards:List[ScryQueryCard], site_url:str='') -> ScryQueryBotResponse:
     response_message = ""
-    if not cards or len(cards) == 0:
+    files = []
+    embed = None
+
+    if not cards:
         response_message = f"No data found for query {site_url}"
-        files = None
-        embed = None
     else:
         card_count = len(cards)
 
         if card_count == 1:
-            response_message = ""
             description = get_formatted_card_info(cards[0])
             embed = discord.Embed(title=cards[0]['name'], url=cards[0]['scryfall_url'], description=description, color=discord.Color.blue())
+            # Let Discord's CDN serve the card art instead of downloading,
+            # resizing, and re-uploading a single image.
+            if cards[0].get('image_uri'):
+                embed.set_image(url=cards[0]['image_uri'])
         else:
             response_message = f">>> ### ScryQuery Results: {card_count} cards"
             if card_count > RESPONSE_LIMIT:
                 response_message += f"\nDisplaying first {RESPONSE_LIMIT} results..."
             response_message += f'\n{site_url}'
-            embed = None
-            
-        i = 0
-        files = []
-        while i < card_count and i < RESPONSE_LIMIT:
-            batch = list(card['image_uri'] for card in cards[i:i+GRID_BATCH_SIZE])
-            grid_image = generate_grid(batch)
-            file = discord.File(grid_image, filename=f'cards_{i}.png')
-            files.append(file)
-            i+=GRID_BATCH_SIZE
-            
-        if len(cards) == 1:
-            embed.set_image(url=files[0].uri)
+
+            i = 0
+            while i < card_count and i < RESPONSE_LIMIT:
+                batch = list(card['image_uri'] for card in cards[i:i+GRID_BATCH_SIZE])
+                grid_image = generate_grid(batch)
+                file = discord.File(grid_image, filename=f'cards_{i}.png')
+                files.append(file)
+                i+=GRID_BATCH_SIZE
             
     return {
         'response_message': response_message,
