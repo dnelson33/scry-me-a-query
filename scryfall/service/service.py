@@ -1,12 +1,13 @@
 from scryfall.api import card_search_request, random_card_request, card_rulings_request
-from scryfall.api.types import ScryfallCardSearchRequest, ScryfallCardSearchResponse, ScryfallCard, ScryfallOrder
+from scryfall.api.types import ScryfallCardSearchRequest, ScryfallCardSearchResponse, ScryfallCard, ScryfallOrder, ScryfallUnique
 from scryfall.service.types import CardSearchResponse, PageInfo, ScryQueryCard, CardRulingsResponse, RandomCardRulingResponse
 import re
 from typing import List
 from random import randint
+import urllib.parse
 
-def card_search(search_text:str, page:int=None) -> CardSearchResponse:
-    q = search_text
+def card_search(search_text:str, page:int=None, unique:ScryfallUnique=None) -> CardSearchResponse:
+    q = urllib.parse.quote(search_text) if search_text else ''
     order = ScryfallOrder.EDHREC.value
     
     # Get order from search_text and remove it from q
@@ -24,7 +25,8 @@ def card_search(search_text:str, page:int=None) -> CardSearchResponse:
     request: ScryfallCardSearchRequest = {
         'q': q,
         'order': order,
-        'page': page
+        'page': page,
+        'unique': unique.value if unique else None
     }
     api_response = card_search_request(request)
     
@@ -37,8 +39,9 @@ def card_search(search_text:str, page:int=None) -> CardSearchResponse:
     return card_search_response
 
 def random_card(search_text:str) -> ScryQueryCard:
+    q = urllib.parse.quote(search_text) if search_text else ''
     api_response = random_card_request({
-        'q': search_text
+        'q': q
     })
     return _map_card(api_response)
     
@@ -91,9 +94,19 @@ def _get_pages(api_response: ScryfallCardSearchResponse) -> List[PageInfo]:
     return pages
 
 def _map_card(scryfall_card: ScryfallCard) -> ScryQueryCard:
-    image_uri = scryfall_card.get('image_uris', {}).get('png')
-    if not image_uri and scryfall_card.get('card_faces'):
-        image_uri = scryfall_card['card_faces'][0].get('image_uris', {}).get('png', '')
+    if scryfall_card.get('card_faces'):
+        front = scryfall_card['card_faces'][0]
+        back = scryfall_card['card_faces'][1] if len(scryfall_card['card_faces']) > 1 else front
+        image_uri = front.get('image_uris', {}).get('png') or scryfall_card.get('image_uris', {}).get('png', '')
+        oracle_text = f'{front['oracle_text']}\n // \n{back['oracle_text']}'
+        type_line = f'{front['type_line']} // {back['type_line']}' if back.get('type_line') else front.get('type_line')
+        mana_cost = f'{front.get('mana_cost')} // {back.get('mana_cost')}' if back.get('mana_cost') else front.get('mana_cost')
+    else:
+        image_uri = scryfall_card.get('image_uris', {}).get('png')
+        oracle_text = scryfall_card.get('oracle_text')
+        mana_cost = scryfall_card.get('mana_cost')
+        type_line = scryfall_card.get('type_line')
+    
     
     prices = scryfall_card.get('prices', {})
     price = prices.get("usd", prices.get("usd_foil", None))
@@ -102,9 +115,9 @@ def _map_card(scryfall_card: ScryfallCard) -> ScryQueryCard:
         'scryfall_url': scryfall_card['scryfall_uri'],
         'image_uri': image_uri,
         'name': scryfall_card['name'],
-        'mana_cost': scryfall_card.get('mana_cost'),
-        'type_line': scryfall_card.get('type_line'),
-        'oracle_text': scryfall_card.get('oracle_text'),
+        'mana_cost': mana_cost,
+        'type_line': type_line,
+        'oracle_text': oracle_text,
         'price': float(price) if price else None,
         'price_foil': float(prices.get("usd_foil")) if prices.get("usd_foil") else None,
         'flavor_text': scryfall_card.get('flavor_text'),

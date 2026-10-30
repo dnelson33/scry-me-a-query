@@ -41,7 +41,7 @@ def generate_grid(card_images:List[str])->BytesIO:
     return grid_bytes
 
 def get_card_image(url:str)->BytesIO:
-    img_response = requests.get(url, stream=True)
+    img_response = requests.get(url, stream=True, headers={'User-Agent': 'ScryQueryBot/1.0'})
     return BytesIO(img_response.content)
     
 def _calculate_grid_size(image_count:int)->Tuple[int, int]:

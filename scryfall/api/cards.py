@@ -10,7 +10,7 @@ def card_search_request(request: ScryfallCardSearchRequest) -> ScryfallCardSearc
     
     query_string = '&'.join([f"{key}={value}" for key, value in request.items() if value is not None])
     url = f"{BASE_URL}/{endpoint}?{query_string}"
-    response = requests.get(url)
+    response = requests.get(url, headers={'User-Agent': 'ScryQueryBot/1.0'})
     scryfall_url = response.request.url.replace(f'{BASE_URL}/{endpoint}', SCRYFALL_URL)
     if response.status_code != 200:
         if response.status_code == 404:
@@ -27,7 +27,7 @@ def random_card_request(request: ScryfallRandomCardRequest) -> ScryfallCard | No
     
     query_string = '&'.join([f"{key}={str(value).strip()}" for key, value in request.items() if value is not None])
     url = f"{BASE_URL}/{endpoint}?{query_string}"
-    response = requests.get(url)
+    response = requests.get(url, headers={'User-Agent': 'ScryQueryBot/1.0'})
     if response.status_code != 200:
         if response.status_code == 404:
             return None
@@ -36,7 +36,7 @@ def random_card_request(request: ScryfallRandomCardRequest) -> ScryfallCard | No
     return cast(ScryfallCard, data)
 
 def card_rulings_request(url:str)->ScryfallRulingsResponse:
-    response = requests.get(url)
+    response = requests.get(url, headers={'User-Agent': 'ScryQueryBot/1.0'})
     if response.status_code != 200:
         if response.status_code == 404:
             return None
