@@ -131,7 +131,7 @@ async def _fetch_referenced_message(
         return None
     try:
         return await ctx.channel.fetch_message(reference.message_id)
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+    except discord.NotFound, discord.Forbidden, discord.HTTPException:
         logger.info("Could not fetch replied message %s", reference.message_id)
         return None
 

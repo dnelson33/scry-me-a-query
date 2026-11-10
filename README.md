@@ -54,13 +54,13 @@ portal so it can read command arguments and replied messages.
 
 ## Local development
 
-Requires Python 3.12 or newer (3.13 is used in CI and Docker).
+Requires Python 3.15 or newer; CI and Docker use 3.15.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install "pytest>=8" "pytest-asyncio>=0.24" "ruff>=0.9" "mypy>=1.13" "types-requests>=2.32"
+pip install "pytest>=9" "pytest-asyncio>=1.4" "ruff>=0.17" "mypy>=2.4" "types-requests>=2.33"
 cp env.example .env   # then set DISCORD_TOKEN
 python main.py
 ```
@@ -75,7 +75,7 @@ pytest
 ```
 
 Tests use mocked HTTP and do not require a Discord token or network access.
-CI runs lint, formatting, type checks, tests on Python 3.12/3.13, and a Docker
+CI runs lint, formatting, type checks, tests on Python 3.15, and a Docker
 build.
 
 ## Docker

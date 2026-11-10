@@ -64,10 +64,10 @@ Measured on the development machine (network-dependent):
 - **Logging.** Root logger writes to stdout and an optional rotating file
   (5 MB, 3 backups). Discord.py deliberately owns no handler, so logs are not
   duplicated or truncated on restart.
-- **Packaging.** `pyproject.toml`, Python 3.13 toolchain file, pinned
+- **Packaging.** `pyproject.toml`, Python 3.15 toolchain file, pinned
   `requirements.txt`, `ruff`, `mypy`, and `pytest`.
 - **CI.** `.github/workflows/ci.yml` runs lint, format check, type check, tests
-  on Python 3.12/3.13, and a Docker build.
+  on Python 3.15, and a Docker build.
 - **Docker.** Multi-stage build, non-root user, read-only root filesystem,
   tmpfs `/tmp`, `.dockerignore` excluding secrets and caches, pinned base image
   tag, and graceful `SIGINT` shutdown.
