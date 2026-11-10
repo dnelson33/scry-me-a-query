@@ -82,9 +82,31 @@ build.
 
 ```bash
 cp env.example .env   # set DISCORD_TOKEN
-docker compose up --build -d
+
+# Homelab / production: pull the image published by CI
+docker compose pull
+docker compose up -d
 docker compose logs -f
 ```
+
+To build from source instead of pulling, use `docker compose up --build -d`.
+
+### Container registry
+
+CI publishes `linux/amd64` images to GitHub Container Registry:
+
+- `ghcr.io/dnelson33/scry-me-a-query:latest` — latest `main`
+- `ghcr.io/dnelson33/scry-me-a-query:sha-<commit>` — immutable per commit
+- `ghcr.io/dnelson33/scry-me-a-query:<version>` — from `v*` tags
+
+Public packages pull without authentication. For a private package, log in
+first with a token that has `read:packages`:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u dnelson33 --password-stdin
+```
+
+Update a deployment with `docker compose pull && docker compose up -d`.
 
 The runtime image:
 

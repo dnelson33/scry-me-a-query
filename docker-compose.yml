@@ -2,7 +2,8 @@ services:
   scryquery_bot:
     build:
       context: .
-    image: scry-me-a-query:latest
+    # Published by CI; `docker compose pull` fetches it on the homelab.
+    image: ghcr.io/dnelson33/scry-me-a-query:latest
     container_name: scryquery_bot
     restart: unless-stopped
     init: true
