@@ -1,38 +1,47 @@
-from typing import TypedDict, List, Optional
+"""Internal (already mapped) shapes returned by the service layer."""
+
+from __future__ import annotations
+
+from typing import TypedDict
+
 
 class ScryQueryCard(TypedDict):
     scryfall_url: str
     image_uri: str
     name: str
-    mana_cost: Optional[str]
+    mana_cost: str
     type_line: str
-    oracle_text: Optional[str]
-    price: Optional[float]
-    price_foil: Optional[float]
-    flavor_text: Optional[str]
-    rulings_url: Optional[str]
-    cmc: Optional[float]
-    
+    oracle_text: str
+    price: float | None
+    price_foil: float | None
+    flavor_text: str | None
+    rulings_url: str | None
+    cmc: float
+
 
 class PageInfo(TypedDict):
     page_number: int
     page_url: str
-    
+
+
 class CardSearchResponse(TypedDict):
     scryfall_url: str
     total_cards: int
-    pages: List[PageInfo]
-    cards: List[ScryQueryCard]
+    pages: list[PageInfo]
+    cards: list[ScryQueryCard]
+
 
 class CardRuling(TypedDict):
-    ruling_text: str
-    source: str
-    published_at: str
-        
+    ruling_text: str | None
+    source: str | None
+    published_at: str | None
+
+
 class CardRulingsResponse(TypedDict):
     card: ScryQueryCard
-    rulings: List[CardRuling]
-    
+    rulings: list[CardRuling]
+
+
 class RandomCardRulingResponse(TypedDict):
     card: ScryQueryCard
-    ruling: Optional[CardRuling]
+    ruling: CardRuling | None

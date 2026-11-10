@@ -1,5 +1,26 @@
-discord.py
-python-dotenv
-requests
-Pillow
-pyedhrec
+# Runtime dependency lock used by Docker and production installs.
+# Regenerate after changing pyproject.toml dependencies:
+#   .venv/bin/pip freeze | grep -vE '^(pytest|ruff|mypy|types-requests|pip-tools)' > requirements.txt
+#
+# Keep direct dependencies first; transitive pins below keep rebuilds identical.
+
+discord.py==2.6.4
+Pillow==12.1.0
+python-dotenv==1.2.1
+requests==2.32.5
+
+# Transitive dependencies
+aiohappyeyeballs==2.6.1
+aiohttp==3.13.3
+aiosignal==1.4.0
+attrs==25.4.0
+audioop-lts==0.2.2; python_version >= "3.13"
+certifi==2026.1.4
+charset-normalizer==3.4.4
+frozenlist==1.8.0
+idna==3.11
+multidict==6.7.1
+propcache==0.4.1
+typing_extensions==4.16.0
+urllib3==2.6.3
+yarl==1.22.0

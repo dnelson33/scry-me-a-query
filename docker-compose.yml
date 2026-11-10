@@ -1,9 +1,24 @@
 services:
   scryquery_bot:
-    build: .
+    build:
+      context: .
+    image: scry-me-a-query:latest
     container_name: scryquery_bot
     restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
     environment:
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-    volumes:
-      - ./:/app
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in .env or the environment}
+      COMMAND_PREFIX: ${COMMAND_PREFIX:-?}
+      EMOJI_GUILD_ID: ${EMOJI_GUILD_ID:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

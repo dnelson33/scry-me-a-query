@@ -1,48 +1,73 @@
 # Copilot / AI Agent Instructions for Scry Me a Query
 
-This repo is a small Discord bot that queries Scryfall and EDHRec, builds image grids, and posts results to Discord. Below are focused, actionable notes to make an AI coding agent immediately productive.
+A small Discord bot that queries Scryfall and EDHRec, builds image grids, and
+posts results to Discord. This file is for coding agents working in the repo.
 
-1. Project entry points and run commands
-- Primary runner: `main.py` — loads `.env` and runs the bot using `DISCORD_TOKEN`.
-- Local dev (venv): `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python main.py`
-- Docker: build/run with `docker-compose up --build` (see `Dockerfile` and `docker-compose.yml`).
+## Run and test
 
-2. High-level architecture (why and how)
-- `bot/` — Discord command handlers and small helpers. Main commands live in `bot/scryquery_bot.py` and common helpers in `bot/utils.py`.
-- `scryfall/` — two-layer Scryfall integration: `scryfall/api/` contains raw HTTP request wrappers, `scryfall/service/` contains mapping and business logic (e.g., `_map_card`, paging logic).
-- `edhrec/` — thin wrapper around `pyedhrec` in `edhrec/service.py` returning a small typed dict.
-- `image_utils/` — image fetching and grid generation (`image_utils/cards.py`) returning a BytesIO suitable for Discord uploads.
-- `assets/` — static images (used by `asktheoracle`).
+- Primary runner: `main.py` loads `.env`, validates `DISCORD_TOKEN`, configures
+  logging, then runs the bot.
+- Local setup:
+  `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
+  then `cp env.example .env` and set `DISCORD_TOKEN`.
+- Quality gate: `ruff check . && ruff format --check . && mypy . && pytest`.
+- Docker: `docker compose up --build -d` (see `Dockerfile`,
+  `docker-compose.yml`). Secrets come from the environment; `.env*` is excluded
+  from the image.
 
-3. Important conventions and patterns (project-specific)
-- Commands use `?` prefix and are defined with `discord.ext.commands` in `bot/scryquery_bot.py`.
-- Service vs API split: prefer adding new logic to `scryfall/service/` and raw HTTP changes to `scryfall/api/`.
-- Typed dicts are used heavily (see `scryfall/api/types.py` and `bot/types.py`) — return values should conform to these shapes.
-- Image files for Discord are created as `discord.File(BytesIO(...), filename=...)` (see `bot/utils.format_response`).
-- Emojis: guild emojis are fetched on startup in `bot/scryquery_bot.on_ready()` and assigned to `bot/emojis.EMOJIS`. The `GUILD_ID` is hard-coded there — update when running in a different guild.
-- Sync network calls in async context: most service functions (e.g., `scryfall.service.card_search`) are synchronous and called inside async handlers. Be conservative when changing to avoid blocking the event loop; convert to async only if you also adjust call sites.
+## Architecture
 
-4. Integration and external deps
-- Scryfall: `scryfall/api/cards.py` calls `https://api.scryfall.com` with `requests`.
-- EDHRec: uses `pyedhrec` in `edhrec/service.py`.
-- Discord bot: `discord.py` (see `requirements.txt`).
+- `bot/` — Discord layer. Commands in `bot/scryquery_bot.py`, formatting and
+  reply-chain helpers in `bot/utils.py`, environment settings in
+  `bot/config.py`, emoji lookup in `bot/emojis.py`.
+- `scryfall/api/` — raw HTTP wrappers and Scryfall response `TypedDict`s.
+- `scryfall/service/` — query rewriting, card mapping, rulings, paging, and
+  internal types. Prefer adding logic here.
+- `edhrec/` — direct client for `json.edhrec.com`.
+- `image_utils/` — parallel image fetching, placeholder tiles, and JPEG grids.
+- `http_client.py` — thread-local `requests.Session`, retries, and timeouts.
+- `assets/` — static images used by `?asktheoracle`.
 
-5. Debugging and common developer tasks
-- To see bot logs: main uses a `FileHandler` at `discord.log` (configured in `main.py`).
-- To test a command locally: start the bot with a valid `DISCORD_TOKEN` in `.env` and invoke commands in a test server.
-- If image grid generation fails, reproduce by calling `image_utils.generate_grid()` with card `image_uri` values; network image fetching happens via `requests`.
+## Conventions
 
-6. Where to implement changes (quick pointers)
-- New command: add to `bot/scryquery_bot.py` and reuse `bot/utils.format_response`.
-- New Scryfall logic: add request shapes to `scryfall/api/types.py`, raw calls to `scryfall/api/cards.py`, and mapping/logic to `scryfall/service/service.py`.
-- Long-running or blocking work: consider delegating to threads or converting to async `aiohttp` and `discord.py`-compatible async callers.
+- Commands use `discord.ext.commands`; the default prefix is `?` and comes from
+  `COMMAND_PREFIX`. Commands are case-insensitive.
+- Blocking work (HTTP, Pillow) must run through `asyncio.to_thread` in command
+  handlers. Never call service functions directly on the event loop.
+- All outbound HTTP should go through `http_client.get` so retries, timeouts,
+  and the user agent stay consistent.
+- Service functions are synchronous and typed; commands are async. Keep that
+  split.
+- Response shapes are `TypedDict`s in `bot/types.py`, `scryfall/api/types.py`,
+  and `scryfall/service/types.py`. Use `.get()` for optional Scryfall fields.
+- One bad image must never fail a grid: return a labelled placeholder from
+  `_load_card_image` instead of raising.
+- Card/text responses must pass `allowed_mentions=NO_MENTIONS`; ThoughtClash
+  permits user mentions only.
+- Secrets are environment-only. Do not hardcode tokens or guild IDs; use
+  `bot/config.py` settings.
+- Manage dependencies in `pyproject.toml`, then update the pinned
+  `requirements.txt`. `pyedhrec` was deliberately removed.
 
-7. Safety and config
-- Secrets: `DISCORD_TOKEN` must be provided via environment (see `.env`/`docker-compose.yml`). Do not hardcode tokens.
-- Guild-specific IDs: `GUILD_ID` in `bot/scryquery_bot.py` is environment-specific — update before deployment.
+## Adding things
 
-8. Examples and quick references
-- Format single-card response: `bot/utils.format_response(cards, site_url)` uses `discord.Embed` and attaches images from `image_utils.generate_grid()`.
-- Add a unique search type: use `scryfall.api.ScryfallUnique` via the `card_search(..., unique=...)` parameter (see `cards` command in `bot/scryquery_bot.py`).
+- **New command:** add it to `bot/scryquery_bot.py`, reuse
+  `bot.utils.format_response`, and send through `_send_card_response` for card
+  results.
+- **New Scryfall logic:** add request/response shapes in `scryfall/api/types.py`,
+  raw calls in `scryfall/api/cards.py`, and mapping/business logic in
+  `scryfall/service/service.py`.
+- **New tests:** put them in `tests/` and use `tests/helpers.py`
+  (`FakeResponse`, `make_card`). Mock `http_client.get`; never require a token
+  or live network.
 
-If any section is unclear or you'd like examples expanded (e.g., converting a synchronous service call to an async implementation), tell me which area and I will update the file accordingly.
+## Common problems
+
+- Logs: stdout by default; set `LOG_FILE` for a rotating file. Do not add a
+  second handler to discord.py; `main.py` owns logging.
+- Emoji fallbacks: custom emojis require the bot to be in `EMOJI_GUILD_ID`;
+  otherwise mana symbols render as text.
+- Image failures: reproduce with `generate_grid()` and inspect the placeholder
+  and warning log containing the card name and URL.
+- Large result sets: only the first 32 cards are shown; pagination is a known
+  deferred improvement (see `IMPROVEMENTS.md`).

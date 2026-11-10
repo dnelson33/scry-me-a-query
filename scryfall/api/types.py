@@ -1,126 +1,150 @@
-from typing import TypedDict, List, Optional
-from enum import Enum
+"""Shapes for Scryfall's HTTP API.
 
-class ScyrfallImageUris(TypedDict):
+Scryfall omits fields that do not apply to a given card (for example
+``image_uris`` is usually only present on the top level for single-faced
+cards), so optional keys are marked with :class:`~typing.NotRequired`.
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import NotRequired, TypedDict
+
+
+class ScryfallImageUris(TypedDict):
     small: str
     normal: str
     large: str
     png: str
     art_crop: str
     border_crop: str
-    
+
+
 class ScryfallPrices(TypedDict):
-    usd: str
-    usd_foil: str
-    eur: str
-    tix: str
+    usd: NotRequired[str | None]
+    usd_foil: NotRequired[str | None]
+    usd_etched: NotRequired[str | None]
+    eur: NotRequired[str | None]
+    eur_foil: NotRequired[str | None]
+    tix: NotRequired[str | None]
+
 
 class ScryfallPurchaseUris(TypedDict):
-    tcgplayer: str
-    cardmarket: str
-    cardhoarder: str
+    tcgplayer: NotRequired[str]
+    cardmarket: NotRequired[str]
+    cardhoarder: NotRequired[str]
+
 
 class ScryfallCardFace(TypedDict):
     name: str
-    mana_cost: str
-    type_line: str
-    oracle_text: str
-    colors: List[str]
-    power: str
-    toughness: str
-    image_uris: ScyrfallImageUris
-   
+    mana_cost: NotRequired[str]
+    type_line: NotRequired[str]
+    oracle_text: NotRequired[str]
+    flavor_text: NotRequired[str]
+    colors: NotRequired[list[str]]
+    power: NotRequired[str]
+    toughness: NotRequired[str]
+    image_uris: NotRequired[ScryfallImageUris]
+
+
 class ScryfallUnique(Enum):
-    CARDS = 'cards'
-    ART = 'art'
-    PRINTS = 'prints'
-    
+    CARDS = "cards"
+    ART = "art"
+    PRINTS = "prints"
+
+
 class ScryfallOrder(Enum):
-    NAME = 'name'
-    RELEASED = 'released'
-    COLOR = 'color'
-    TYPE = 'type'
-    CMC = 'cmc'
-    POWER = 'power'
-    TOUGHNESS = 'toughness'
-    EDHREC = 'edhrec'
+    NAME = "name"
+    RELEASED = "released"
+    COLOR = "color"
+    TYPE = "type"
+    CMC = "cmc"
+    POWER = "power"
+    TOUGHNESS = "toughness"
+    EDHREC = "edhrec"
+
 
 class ScryfallOrderDir(Enum):
-    AUTO = 'auto'
-    ASC = 'asc'
-    DESC = 'desc'    
-     
+    AUTO = "auto"
+    ASC = "asc"
+    DESC = "desc"
+
+
 class ScryfallCard(TypedDict):
     id: str
     name: str
-    released_at: str
-    uri: str
     scryfall_uri: str
-    image_uris: ScyrfallImageUris
-    mana_cost: str
-    cmc: float
-    type_line: str
-    oracle_text: str
-    power: Optional[str]
-    toughness: Optional[str]
-    colors: List[str]
-    color_identity: List[str]
-    keywords: List[str]
-    legalities: dict
-    reserved: bool
-    foil: bool
-    nonfoil: bool
-    game_changer: bool
-    reprint: bool
-    set_id: str
-    set_name: str
-    set_uri: str
-    set_search_uri: str
-    scryfall_set_uri: str
-    rulings_uri: str
-    prints_search_uri: str
-    collector_number: str
-    rarity: str
-    artist: str
-    flavor_text: str
-    prices: ScryfallPrices
-    purchase_uris: ScryfallPurchaseUris
-    produced_mana: Optional[List[str]]
-    card_faces: Optional[List[ScryfallCardFace]]
+    uri: NotRequired[str]
+    released_at: NotRequired[str]
+    image_uris: NotRequired[ScryfallImageUris]
+    mana_cost: NotRequired[str]
+    cmc: NotRequired[float]
+    type_line: NotRequired[str]
+    oracle_text: NotRequired[str]
+    flavor_text: NotRequired[str]
+    power: NotRequired[str | None]
+    toughness: NotRequired[str | None]
+    colors: NotRequired[list[str]]
+    color_identity: NotRequired[list[str]]
+    keywords: NotRequired[list[str]]
+    legalities: NotRequired[dict[str, str]]
+    reserved: NotRequired[bool]
+    foil: NotRequired[bool]
+    nonfoil: NotRequired[bool]
+    game_changer: NotRequired[bool]
+    reprint: NotRequired[bool]
+    set_id: NotRequired[str]
+    set_name: NotRequired[str]
+    set_uri: NotRequired[str]
+    set_search_uri: NotRequired[str]
+    scryfall_set_uri: NotRequired[str]
+    rulings_uri: NotRequired[str]
+    prints_search_uri: NotRequired[str]
+    collector_number: NotRequired[str]
+    rarity: NotRequired[str]
+    artist: NotRequired[str]
+    prices: NotRequired[ScryfallPrices]
+    purchase_uris: NotRequired[ScryfallPurchaseUris]
+    produced_mana: NotRequired[list[str] | None]
+    card_faces: NotRequired[list[ScryfallCardFace]]
 
-class ScryfallCardSearchRequest(TypedDict):
-    q: Optional[str]
-    order: Optional[ScryfallOrder]
-    unique: Optional[ScryfallUnique] 
-    dir: Optional[str]
-    include_extras: Optional[bool]
-    include_multilingual: Optional[bool]
-    include_variations: Optional[bool]
-    page: Optional[int]
-    format: Optional[str]
-    pretty: Optional[bool]
-    
+
+class ScryfallCardSearchRequest(TypedDict, total=False):
+    q: str | None
+    order: str | None
+    unique: str | None
+    dir: str | None
+    include_extras: bool | None
+    include_multilingual: bool | None
+    include_variations: bool | None
+    page: int | None
+    format: str | None
+    pretty: bool | None
+
+
 class ScryfallCardSearchResponse(TypedDict):
     url: str
     total_cards: int
     has_more: bool
-    next_page: Optional[str]
-    data: List[ScryfallCard]
-    
+    data: list[ScryfallCard]
+    next_page: NotRequired[str]
 
-class ScryfallRandomCardRequest(TypedDict):
-    q: Optional[str]
-    format: Optional[str]
-    face: Optional[str]
-    version: Optional[str]
-    pretty: Optional[bool]
-    
+
+class ScryfallRandomCardRequest(TypedDict, total=False):
+    q: str | None
+    format: str | None
+    face: str | None
+    version: str | None
+    pretty: bool | None
+
+
 class ScryfallRuling(TypedDict):
     oracle_id: str
     source: str
     published_at: str
     comment: str
-    
+
+
 class ScryfallRulingsResponse(TypedDict):
     has_more: bool
-    data: List[ScryfallRuling]
+    data: list[ScryfallRuling]

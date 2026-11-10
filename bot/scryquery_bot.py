@@ -1,219 +1,536 @@
+"""Discord command definitions and the bot instance."""
+
+from __future__ import annotations
+
 import asyncio
+import logging
+from pathlib import Path
+from random import randint
+
 import discord
 from discord.ext import commands
-from scryfall.service import card_search, ScryQueryCard, random_card, get_random_card_ruling
-from scryfall.api import ScryfallUnique
-from bot.utils import format_response, get_reply_query, replace_emojis, get_reply_card_name, get_card_name_with_link
+
 import bot.emojis as emojis
+from bot.config import load_settings
+from bot.types import ClashEntry, ScryQueryBotResponse
+from bot.utils import (
+    format_response,
+    get_card_name_with_link,
+    get_reply_card_name,
+    get_reply_query,
+    pick_winners,
+    replace_emojis,
+)
 from edhrec.service import get_edhrec_stats
-from random import randint
 from image_utils import generate_grid
+from scryfall.api import ScryfallUnique
+from scryfall.exceptions import NoCardsFound, ScryfallError
+from scryfall.service import card_search, get_random_card_ruling, random_card
+
+logger = logging.getLogger(__name__)
+
+settings = load_settings()
+
+EXPIRE_AFTER = 30
+MAX_CLASH_PLAYERS = 16
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+NO_MENTIONS = discord.AllowedMentions.none()
+MENTION_USERS_ONLY = discord.AllowedMentions(users=True)
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='?', intents=intents, case_insensitive=True)
-   
-@bot.event
-async def on_ready():
-    GUILD_ID = 1462905855686082653 # Guild ID where emojis are hosted
-    guild = bot.get_guild(GUILD_ID)
 
-    emojis.EMOJIS = guild.emojis
-    
-    print(f'Logged in as {bot.user.name} - {bot.user.id}')
+bot = commands.Bot(
+    command_prefix=settings.command_prefix,
+    intents=intents,
+    case_insensitive=True,
+    allowed_mentions=NO_MENTIONS,
+)
+
 
 @bot.event
-async def on_command_error(ctx: commands.Context, error:commands.CommandError):
-    print(error)
-    await ctx.send("Well, this is embarassing, but apparently you found a bug...", reference=ctx.message)
-    
+async def on_ready() -> None:
+    if settings.emoji_guild_id is not None:
+        guild = bot.get_guild(settings.emoji_guild_id)
+        if guild is None:
+            logger.warning(
+                "Emoji guild %s not found; falling back to text mana symbols",
+                settings.emoji_guild_id,
+            )
+        else:
+            emojis.load(guild.emojis)
+
+    user = bot.user
+    logger.info("Logged in as %s (id=%s)", user, user.id if user else "unknown")
+
+
+@bot.before_invoke
+async def log_command(ctx: commands.Context) -> None:
+    logger.info(
+        "command=%s user=%s guild=%s",
+        ctx.command.qualified_name if ctx.command else ctx.invoked_with,
+        ctx.author.id,
+        ctx.guild.id if ctx.guild else "dm",
+    )
+
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError) -> None:
+    if isinstance(error, commands.CommandNotFound):
+        return
+
+    prefix = ctx.prefix or settings.command_prefix
+    command_name = ctx.command.qualified_name if ctx.command else ctx.invoked_with
+
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(
+            f"Missing `{error.param.name}`. Try `{prefix}help {command_name}`.",
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
+    if isinstance(error, commands.BadArgument):
+        await ctx.send(
+            f"That argument did not look right. Try `{prefix}help {command_name}`.",
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(
+            f"Slow down a little — try again in {error.retry_after:.1f}s.",
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
+    if isinstance(error, commands.CheckFailure):
+        await ctx.send(
+            "You do not have permission to run that command.",
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
+    original = error.original if isinstance(error, commands.CommandInvokeError) else error
+    logger.error("Command %s failed: %s", command_name, error, exc_info=original)
+    await ctx.send(
+        "Well, this is embarrassing, but apparently you found a bug...",
+        allowed_mentions=NO_MENTIONS,
+    )
+
+
+async def _send_card_response(ctx: commands.Context, response: ScryQueryBotResponse) -> None:
+    """Send a formatted card response, omitting empty optional payloads."""
+
+    if response["embed"] is not None:
+        await ctx.send(
+            response["response_message"],
+            embed=response["embed"],
+            files=response["files"],
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+        )
+    else:
+        await ctx.send(
+            response["response_message"],
+            files=response["files"],
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+        )
+
+
 @bot.command()
-async def sq(ctx, *, query: str):
-    global last_sq
-    reply_query = await get_reply_query(ctx, '?sq')
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def sq(ctx: commands.Context, *, query: str = "") -> None:
+    reply_query = await get_reply_query(ctx, f"{settings.command_prefix}sq")
     query = f"{reply_query} {query}".strip()
-    
+
+    if not query:
+        await ctx.send(
+            f"Give me something to search for, e.g. `{ctx.prefix}sq t:elf otag:manadork`.",
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
     async with ctx.typing():
-        last_sq = query
         try:
             card_response = await asyncio.to_thread(card_search, query)
-            bot_response = await asyncio.to_thread(format_response, card_response["cards"], card_response["scryfall_url"])
-                    
-            await ctx.send(content=bot_response['response_message'], embed=bot_response['embed'], files=bot_response["files"], reference=ctx.message, mention_author=False)
-        except Exception as e:
-            print(f"Error querying Scryfall: {e}")
-            await ctx.send("An error occurred while querying Scryfall.", reference=ctx.message, mention_author=False)
+            bot_response = await asyncio.to_thread(
+                format_response,
+                card_response["cards"],
+                card_response["scryfall_url"],
+            )
+        except ScryfallError:
+            logger.exception("Scryfall search failed for %r", query)
+            await ctx.send(
+                "Scryfall is having trouble right now. Try again in a moment.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+        except Exception:
+            logger.exception("Unexpected error building search response for %r", query)
+            await ctx.send(
+                "An unexpected error occurred while building that response.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        await _send_card_response(ctx, bot_response)
+
 
 @bot.command()
-async def mycaptain(ctx):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def mycaptain(ctx: commands.Context) -> None:
     await sqrandom(ctx, query="is:commander")
-    
+
+
 @bot.command()
-async def sqrandom(ctx, *, query: str = ''):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def sqrandom(ctx: commands.Context, *, query: str = "") -> None:
     async with ctx.typing():
-        card = await asyncio.to_thread(random_card, query)
-        bot_response = await asyncio.to_thread(format_response, [card], card['scryfall_url'])
-        await ctx.send(bot_response["response_message"], embed=bot_response['embed'], files=bot_response["files"], reference=ctx.message, mention_author=False)       
-            
+        try:
+            card = await asyncio.to_thread(random_card, query)
+        except NoCardsFound:
+            await ctx.send(
+                f"No cards found for `{query}`.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+        except ScryfallError:
+            logger.exception("Random card lookup failed for %r", query)
+            await ctx.send(
+                "Scryfall is having trouble right now. Try again in a moment.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        bot_response = format_response([card], card["scryfall_url"])
+        await _send_card_response(ctx, bot_response)
+
+
 @bot.command(aliases=["slivermetimbers"])
-async def sliverme(ctx):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def sliverme(ctx: commands.Context) -> None:
     await sqrandom(ctx, query="t:sliver")
 
+
 @bot.command()
-async def BOO(ctx):
-    await ctx.send("https://tenor.com/view/hamster-ayasan-gif-24417561")
+async def boo(ctx: commands.Context) -> None:
+    await ctx.send(
+        "https://tenor.com/view/hamster-ayasan-gif-24417561",
+        allowed_mentions=NO_MENTIONS,
+    )
+
 
 @bot.command(aliases=["quoteme"])
-async def flavortown(ctx):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def flavortown(ctx: commands.Context) -> None:
     async with ctx.typing():
-        card = await asyncio.to_thread(random_card, "has:flavor")
-        flavor_text = card.get('flavor_text')
-        card_name_with_link = get_card_name_with_link(card)
-        bot_message=f"{flavor_text}\n\n— {card_name_with_link}"
-        
-        embed = discord.Embed(description=bot_message, color=discord.Color.blue())
-        await ctx.send(embed=embed)
+        try:
+            card = await asyncio.to_thread(random_card, "has:flavor")
+        except ScryfallError:
+            logger.exception("Flavor lookup failed")
+            await ctx.send(
+                "Scryfall is having trouble right now. Try again in a moment.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        flavor_text = card["flavor_text"]
+        if not flavor_text:
+            await ctx.send(
+                "Couldn't find flavor text this time — try again.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        embed = discord.Embed(
+            description=f"{flavor_text}\n\n— {get_card_name_with_link(card)}",
+            color=discord.Color.blue(),
+        )
+        await ctx.send(embed=embed, allowed_mentions=NO_MENTIONS)
+
 
 @bot.command()
-async def edhrec(ctx, *, query: str):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def edhrec(ctx: commands.Context, *, query: str) -> None:
     async with ctx.typing():
         commander_stats = await asyncio.to_thread(get_edhrec_stats, query)
-        if commander_stats:
-            rank = commander_stats.get('rank')
-            commander_decks = commander_stats.get('commander_deck_count')
-            salt_score = round(commander_stats.get('salt', 0), 3)
-            bot_message = ""
-            description = f"Rank: #{rank}\nCommander decks: {commander_decks:,}\nSalt score: {salt_score}"
-            embed = discord.Embed(title=f"EDHRec Commander Stats: {query}", description=description, color=discord.Color.blue())
-        else:
-            bot_message = f"No EDHRec data found for {query}."
-            embed=None
-            
-        await ctx.send(bot_message, embed=embed, reference=ctx.message, mention_author=False)
+        if not commander_stats:
+            await ctx.send(
+                f"No EDHRec data found for {query}.",
+                reference=ctx.message,
+                mention_author=False,
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        lines = []
+        rank = commander_stats["rank"]
+        deck_count = commander_stats["commander_deck_count"]
+        salt = commander_stats["salt"]
+        if rank is not None:
+            lines.append(f"Rank: #{rank}")
+        if deck_count is not None:
+            lines.append(f"Commander decks: {deck_count:,}")
+        if salt is not None:
+            lines.append(f"Salt score: {float(salt):.3f}")
+
+        embed = discord.Embed(
+            title=f"EDHRec Commander Stats: {query}",
+            description="\n".join(lines) or "No stats available.",
+            color=discord.Color.blue(),
+        )
+        await ctx.send(
+            embed=embed,
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+        )
+
 
 @bot.command(aliases=["randnum", "random"])
-async def gamble(ctx, *, query: str = '7'):
-    async with ctx.typing():
-        input = 0
-        message = ""
-        try:
-            input = int(query)
-            if input <= 1:
-                message = "Please provide a positive integer > 1"
-            elif input > 250:
-                message = "What game are you even playing?!?"
-            else:
-                number = randint(1, input)
-                message = f"🎲 You rolled: {number}"
-                
-        except:
-            message = "Please provide a positive integer > 1"
-        
-        await ctx.send(message, reference=ctx.message, mention_author=False)
+async def gamble(ctx: commands.Context, *, query: str = "7") -> None:
+    try:
+        sides = int(query)
+    except ValueError:
+        await ctx.send(
+            "Please provide a positive integer > 1",
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
+    if sides <= 1:
+        message = "Please provide a positive integer > 1"
+    elif sides > 250:
+        message = "What game are you even playing?!?"
+    else:
+        message = f"🎲 You rolled: {randint(1, sides)}"
+
+    await ctx.send(
+        message,
+        reference=ctx.message,
+        mention_author=False,
+        allowed_mentions=NO_MENTIONS,
+    )
+
 
 @bot.command(aliases=["datapriest", "edhtrack"])
-async def arcaneoculus(ctx):
-    async with ctx.typing():
-        await ctx.send('https://arcane-oculus-edh.base44.app/')
-        
+async def arcaneoculus(ctx: commands.Context) -> None:
+    await ctx.send(
+        "https://arcane-oculus-edh.base44.app/",
+        allowed_mentions=NO_MENTIONS,
+    )
+
+
 @bot.command()
-async def asktheoracle(ctx, *, query:str = ''):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def asktheoracle(ctx: commands.Context, *, query: str = "") -> None:
     async with ctx.typing():
         try:
             ruling_response = await asyncio.to_thread(get_random_card_ruling, query)
-        except Exception as e:
-            print(e)
+        except NoCardsFound:
             ruling_response = None
-            
-        if ruling_response and ruling_response.get('ruling'):
-            card = ruling_response['card']
-            name_with_link = f"**[{card['name']}](<{card['scryfall_url']}>)**"
-            ruling = ruling_response['ruling'].get('ruling_text')
-            embed = discord.Embed(title="The Oracle has spoken", description=f'{name_with_link}\n{ruling}', color=discord.Color.blue())
-            if card.get('image_uri'):
-                embed.set_image(url=card['image_uri'])
-            await ctx.send(embed=embed, reference=ctx.message, mention_author=False)
-        else:
-            oracle_img_path = 'assets/oracle_pondering_orb.jpg'
-            oracle = discord.File(oracle_img_path)
-            embed = discord.Embed(title='The Oracle is pondering the orb and gives no response', color=discord.Color.blue())
-            embed.set_image(url=oracle.uri)
-            await ctx.send(embed=embed, file=oracle, reference=ctx.message)
+        except ScryfallError:
+            logger.exception("Oracle ruling lookup failed for %r", query)
+            ruling_response = None
 
-@bot.command(aliases=['thoughtclash'])
-async def clash(ctx):   
+        if ruling_response and ruling_response["ruling"]:
+            card = ruling_response["card"]
+            ruling = ruling_response["ruling"]["ruling_text"] or "No ruling text."
+            embed = discord.Embed(
+                title="The Oracle has spoken",
+                description=f"{get_card_name_with_link(card)}\n{ruling}",
+                color=discord.Color.blue(),
+            )
+            if card["image_uri"]:
+                embed.set_image(url=card["image_uri"])
+            await ctx.send(
+                embed=embed,
+                reference=ctx.message,
+                mention_author=False,
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        oracle = discord.File(ASSETS_DIR / "oracle_pondering_orb.jpg", filename="oracle.jpg")
+        embed = discord.Embed(
+            title="The Oracle is pondering the orb and gives no response",
+            color=discord.Color.blue(),
+        )
+        embed.set_image(url="attachment://oracle.jpg")
+        await ctx.send(
+            embed=embed,
+            file=oracle,
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+        )
+
+
+@bot.command(aliases=["thoughtclash"])
+@commands.cooldown(1, 15, commands.BucketType.user)
+async def clash(ctx: commands.Context) -> None:
+    contestants: list[str] = []
+    seen: set[int] = set()
+    for user in [ctx.author, *ctx.message.mentions]:
+        if user.id in seen:
+            continue
+        seen.add(user.id)
+        contestants.append(user.mention)
+
     async with ctx.typing():
-        contestants = [ m.mention for m in ctx.message.mentions]
-        contestants.append(ctx.author.mention)
-        contestants = set(contestants)
         if len(contestants) == 1:
-            initial_message = 'You need friends to play ThoughtClash, nerd!'
-        elif len(contestants) > 16:
-            initial_message = 'You have too many friends. Pick your 16 closest'
-        else:
-            initial_message = f'Highest CMC wins. Good luck!'
+            await ctx.send(
+                "You need friends to play ThoughtClash, nerd!",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        if len(contestants) > MAX_CLASH_PLAYERS:
+            await ctx.send(
+                f"You have too many friends. Pick your {MAX_CLASH_PLAYERS} closest",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        await ctx.send(
+            f"Highest CMC wins. Good luck! {' '.join(contestants)}",
+            allowed_mentions=MENTION_USERS_ONLY,
+        )
+
+        entries: list[ClashEntry] = []
+        drawn_cmcs: list[float] = []
+        entry_message = ""
+
+        try:
             for contestant in contestants:
-                initial_message += f' {contestant}'
-        
-        await ctx.send(initial_message)
-    if len(contestants) == 1:
-        return
-     
-    async with ctx.typing():                  
-        entries = []
-        cmcs = []
-        
-        entry_message = ''
-        for contestant in contestants:
-            cmc_filter = ' '.join([ f'mv!={int(c)}' for c in cmcs])
-            card = await asyncio.to_thread(random_card, f'{cmc_filter}')
-            cmcs.append(card.get('cmc', 0))
-            entries.append({ 'user': contestant, 'card_name': card['name'], 'card_image_url': card['image_uri'], 'cmc': card.get('cmc', 0) })
-            name_with_link = f"**[{card['name']}](<{card['scryfall_url']}>)**"
-            
-            entry_message += f'{contestant}: {name_with_link} ({card['mana_cost']})\n'
-        
-        highest_cmc = max([e['cmc'] for e in entries])
-        winning_entry = [e for e in entries if e['cmc'] == highest_cmc][0]
-        card_image = await asyncio.to_thread(generate_grid, [e['card_image_url'] for e in entries])
-        message = replace_emojis(f'>>> {entry_message}\n\nCongrats {winning_entry['user']}!!')
-        
-        embed = discord.Embed(title="ThoughtClash Results", description=message, color=discord.Color.magenta())
-        file=discord.File(card_image, filename="grid.png")
-        embed.set_image(url='attachment://grid.png')
-        await ctx.send(file=file, embed=embed)
-        
-        
-        
+                exclude = " ".join(f"mv!={cmc:g}" for cmc in drawn_cmcs)
+                card = await asyncio.to_thread(random_card, exclude)
+                cmc = card["cmc"]
+                drawn_cmcs.append(cmc)
+                entries.append(
+                    {
+                        "user": contestant,
+                        "card_name": card["name"],
+                        "card_image_url": card["image_uri"],
+                        "cmc": cmc,
+                    }
+                )
+                entry_message += (
+                    f"{contestant}: {get_card_name_with_link(card)} "
+                    f"({replace_emojis(card['mana_cost'])})\n"
+                )
+        except ScryfallError:
+            logger.exception("ThoughtClash draw failed")
+            await ctx.send(
+                "Couldn't draw cards for that clash. Try again in a moment.",
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        winners = pick_winners(entries)
+        if len(winners) == 1:
+            result = f"Congrats {winners[0]['user']}!!"
+        else:
+            result = f"It's a tie! Congrats {', '.join(w['user'] for w in winners)}!!"
+
+        card_image = await asyncio.to_thread(
+            generate_grid,
+            [entry["card_image_url"] for entry in entries],
+            [entry["card_name"] for entry in entries],
+        )
+        message = replace_emojis(f">>> {entry_message}\n\n{result}")
+
+        embed = discord.Embed(
+            title="ThoughtClash Results",
+            description=message,
+            color=discord.Color.magenta(),
+        )
+        file = discord.File(card_image, filename="grid.jpg")
+        embed.set_image(url="attachment://grid.jpg")
+        await ctx.send(
+            file=file,
+            embed=embed,
+            allowed_mentions=MENTION_USERS_ONLY,
+        )
+
+
 @bot.command()
-async def momir(ctx, *, query:str=None):
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def momir(ctx: commands.Context, *, query: str | None = None) -> None:
     cmc = randint(0, 16)
-    try:
-        if query:
+    if query is not None and query.strip():
+        try:
             cmc = int(query)
-        if cmc > 16 or cmc < 0:
-            raise "Number must be an integer between 0 and 16"
-    except:
-        await ctx.send("Please enter an integer between 0 and 16", reference=ctx.message)
+        except ValueError:
+            await ctx.send(
+                "Please enter an integer between 0 and 16",
+                reference=ctx.message,
+                mention_author=False,
+                allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+    if not 0 <= cmc <= 16:
+        await ctx.send(
+            "Please enter an integer between 0 and 16",
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+        )
         return
-        
+
     await sqrandom(ctx, query=f"t:creature mv={cmc}")
 
-@bot.command(aliases=['prints', 'art', 'arts'])
-async def cards(ctx):
-    command = ctx.invoked_with
-    if command == 'arts':
-        command = 'art'
-    scryfall_unique = ScryfallUnique[command.upper()]
-    
+
+@bot.command(aliases=["prints", "art", "arts"])
+@commands.cooldown(2, 10, commands.BucketType.user)
+async def cards(ctx: commands.Context, *, query: str = "") -> None:
+    invoked = (ctx.invoked_with or "cards").lower()
+    invoked = "art" if invoked == "arts" else invoked
+
+    try:
+        unique = ScryfallUnique(invoked)
+    except ValueError:
+        await ctx.send(
+            "Unknown card lookup mode.",
+            allowed_mentions=NO_MENTIONS,
+        )
+        return
+
+    card_name = query.strip() or await get_reply_card_name(ctx)
+    previous_query = "" if card_name else await get_reply_query(ctx, f"{settings.command_prefix}sq")
+
+    if not card_name and not previous_query:
+        await ctx.send(
+            f"Reply to a card or query, or provide a card name (`{ctx.prefix}{invoked} Sol Ring`).",
+            reference=ctx.message,
+            mention_author=False,
+            allowed_mentions=NO_MENTIONS,
+            delete_after=EXPIRE_AFTER,
+        )
+        return
+
+    search_query = f"{card_name} f:any" if card_name else previous_query
+
     async with ctx.typing():
-        card_name = await get_reply_card_name(ctx)
-        previous_query = await get_reply_query(ctx, '?sq')
-        if not card_name and not previous_query:
-            await ctx.send("You must reply to a ScryQuery card or query to use this feature", reference=ctx.message, delete_after=30)
+        try:
+            card_response = await asyncio.to_thread(card_search, search_query, unique=unique)
+            response = await asyncio.to_thread(
+                format_response,
+                card_response["cards"],
+                card_response["scryfall_url"],
+            )
+        except ScryfallError:
+            logger.exception("Card lookup failed for %r", search_query)
+            await ctx.send(
+                "Scryfall is having trouble right now. Try again in a moment.",
+                allowed_mentions=NO_MENTIONS,
+            )
             return
-        
-        query = f'{card_name} f:any' if card_name else previous_query
-        card_response = await asyncio.to_thread(card_search, query, unique=scryfall_unique)
-        response = await asyncio.to_thread(format_response, card_response['cards'], card_response['scryfall_url'])
-        await ctx.send(response["response_message"], embed=response["embed"], files=response["files"], reference=ctx.message, mention_author=False)        
+
+        await _send_card_response(ctx, response)
