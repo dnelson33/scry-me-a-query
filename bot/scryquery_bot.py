@@ -50,7 +50,9 @@ bot = commands.Bot(
 
 @bot.event
 async def on_ready() -> None:
-    if settings.emoji_guild_id is not None:
+    if settings.emoji_guild_id is None:
+        logger.warning("EMOJI_GUILD_ID is not set; mana symbols will render as text")
+    else:
         guild = bot.get_guild(settings.emoji_guild_id)
         if guild is None:
             logger.warning(
@@ -59,6 +61,12 @@ async def on_ready() -> None:
             )
         else:
             emojis.load(guild.emojis)
+            logger.info("Loaded %d emoji(s) from guild %s", len(guild.emojis), guild.id)
+            if not guild.emojis:
+                logger.warning(
+                    "Emoji guild %s has no emojis; falling back to text mana symbols",
+                    guild.id,
+                )
 
     user = bot.user
     logger.info("Logged in as %s (id=%s)", user, user.id if user else "unknown")

@@ -63,10 +63,11 @@ def main() -> None:
         raise SystemExit(1)
 
     LOGGER.info(
-        "Starting bot (prefix=%r, log_level=%s, file_logging=%s)",
+        "Starting bot (prefix=%r, log_level=%s, file_logging=%s, emoji_guild=%s)",
         settings.command_prefix,
         settings.log_level,
         bool(settings.log_file),
+        settings.emoji_guild_id or "not configured",
     )
 
     try:

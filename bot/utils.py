@@ -178,4 +178,8 @@ def _format_price(value: float | None) -> str:
 
 def _replace_emoji_match(match: re.Match[str]) -> str:
     symbol = match.group(1).lower()
-    return emojis.get(f"mana{symbol}", f"{{{symbol.upper()}}}")
+    # Hybrid/Phyrexian symbols use slashes (``{W/U}``, ``{W/P}``, ``{G/W/P}``)
+    # but Discord emoji names cannot, so the guild names them ``manawu``,
+    # ``manawp``, ``managwp``, etc.
+    lookup = symbol.replace("/", "")
+    return emojis.get(f"mana{lookup}", f"{{{symbol.upper()}}}")
