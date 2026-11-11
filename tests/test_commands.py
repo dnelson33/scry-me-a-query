@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -186,7 +187,7 @@ async def test_missing_argument_gets_help_hint() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cooldown_gets_friendly_message() -> None:
+async def test_cooldown_gets_friendly_message(caplog: pytest.LogCaptureFixture) -> None:
     ctx = FakeContext()
     ctx.command = SimpleNamespace(qualified_name="sq")
     error = commands.CommandOnCooldown(
@@ -195,9 +196,12 @@ async def test_cooldown_gets_friendly_message() -> None:
         type=commands.BucketType.user,
     )
 
-    await scryquery_bot.on_command_error(ctx, error)
+    with caplog.at_level(logging.INFO, logger="bot.scryquery_bot"):
+        await scryquery_bot.on_command_error(ctx, error)
 
     assert "4.2s" in ctx.sent[0]["content"]
+    assert "Command sq cooldown hit by user 1 in guild 123" in caplog.text
+    assert "retry_after=4.24s" in caplog.text
 
 
 @pytest.mark.asyncio

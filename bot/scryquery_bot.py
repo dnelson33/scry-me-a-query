@@ -37,6 +37,23 @@ ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 NO_MENTIONS = discord.AllowedMentions.none()
 MENTION_USERS_ONLY = discord.AllowedMentions(users=True)
 
+# Per-user command cooldowns. These are deliberately generous: outbound HTTP
+# already retries on 429/5xx, and the bot is small enough that throttling is not
+# needed yet. Tighten them (or add a global limit) if spam starts causing
+# latency or upstream rate limits. ``?clash`` is tighter because each use draws
+# and renders up to 16 cards.
+DEFAULT_COOLDOWN_RATE = 10
+DEFAULT_COOLDOWN_PERIOD = 10.0
+CLASH_COOLDOWN_RATE = 5
+CLASH_COOLDOWN_PERIOD = 15.0
+
+default_cooldown = commands.cooldown(
+    DEFAULT_COOLDOWN_RATE, DEFAULT_COOLDOWN_PERIOD, commands.BucketType.user
+)
+clash_cooldown = commands.cooldown(
+    CLASH_COOLDOWN_RATE, CLASH_COOLDOWN_PERIOD, commands.BucketType.user
+)
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -105,6 +122,13 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError) 
         return
 
     if isinstance(error, commands.CommandOnCooldown):
+        logger.info(
+            "Command %s cooldown hit by user %s in guild %s (retry_after=%.2fs)",
+            command_name,
+            ctx.author.id,
+            ctx.guild.id if ctx.guild else "dm",
+            error.retry_after,
+        )
         await ctx.send(
             f"Slow down a little — try again in {error.retry_after:.1f}s.",
             allowed_mentions=NO_MENTIONS,
@@ -149,7 +173,7 @@ async def _send_card_response(ctx: commands.Context, response: ScryQueryBotRespo
 
 
 @bot.command()
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def sq(ctx: commands.Context, *, query: str = "") -> None:
     reply_query = await get_reply_query(ctx, f"{settings.command_prefix}sq")
     query = f"{reply_query} {query}".strip()
@@ -188,13 +212,13 @@ async def sq(ctx: commands.Context, *, query: str = "") -> None:
 
 
 @bot.command()
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def mycaptain(ctx: commands.Context) -> None:
     await sqrandom(ctx, query="is:commander")
 
 
 @bot.command()
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def sqrandom(ctx: commands.Context, *, query: str = "") -> None:
     async with ctx.typing():
         try:
@@ -218,7 +242,7 @@ async def sqrandom(ctx: commands.Context, *, query: str = "") -> None:
 
 
 @bot.command(aliases=["slivermetimbers"])
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def sliverme(ctx: commands.Context) -> None:
     await sqrandom(ctx, query="t:sliver")
 
@@ -232,7 +256,7 @@ async def boo(ctx: commands.Context) -> None:
 
 
 @bot.command(aliases=["quoteme"])
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def flavortown(ctx: commands.Context) -> None:
     async with ctx.typing():
         try:
@@ -261,7 +285,7 @@ async def flavortown(ctx: commands.Context) -> None:
 
 
 @bot.command()
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def edhrec(ctx: commands.Context, *, query: str) -> None:
     async with ctx.typing():
         commander_stats = await asyncio.to_thread(get_edhrec_stats, query)
@@ -335,7 +359,7 @@ async def arcaneoculus(ctx: commands.Context) -> None:
 
 
 @bot.command()
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def asktheoracle(ctx: commands.Context, *, query: str = "") -> None:
     async with ctx.typing():
         try:
@@ -380,7 +404,7 @@ async def asktheoracle(ctx: commands.Context, *, query: str = "") -> None:
 
 
 @bot.command(aliases=["thoughtclash"])
-@commands.cooldown(1, 15, commands.BucketType.user)
+@clash_cooldown
 async def clash(ctx: commands.Context) -> None:
     contestants: list[str] = []
     seen: set[int] = set()
@@ -468,7 +492,7 @@ async def clash(ctx: commands.Context) -> None:
 
 
 @bot.command()
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def momir(ctx: commands.Context, *, query: str | None = None) -> None:
     cmc = randint(0, 16)
     if query is not None and query.strip():
@@ -496,7 +520,7 @@ async def momir(ctx: commands.Context, *, query: str | None = None) -> None:
 
 
 @bot.command(aliases=["prints", "art", "arts"])
-@commands.cooldown(2, 10, commands.BucketType.user)
+@default_cooldown
 async def cards(ctx: commands.Context, *, query: str = "") -> None:
     invoked = (ctx.invoked_with or "cards").lower()
     invoked = "art" if invoked == "arts" else invoked
